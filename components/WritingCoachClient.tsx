@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { Sparkles, Send, FileText } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 const sampleQuestions = [
   {
@@ -27,6 +28,7 @@ export function WritingCoachClient() {
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   const wordCount = answer
@@ -39,6 +41,7 @@ export function WritingCoachClient() {
 
     setFeedback("");
     setErrorMessage("");
+    setSuccessMessage("");
 
     if (!answer.trim()) {
       setErrorMessage("Write your answer first.");
@@ -46,17 +49,36 @@ export function WritingCoachClient() {
     }
 
     if (wordCount < 50) {
-      setErrorMessage("Your answer is too short. Write at least 50 words for useful feedback.");
+      setErrorMessage(
+        "Your answer is too short. Write at least 50 words for useful feedback."
+      );
+      return;
+    }
+
+    if (!supabase) {
+      setErrorMessage("Supabase is not configured.");
       return;
     }
 
     setLoading(true);
 
     try {
+      const {
+        data: { session },
+        error: sessionError
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        setErrorMessage("Please login before using AI writing feedback.");
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch("/api/ai-feedback", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
           skill: taskType,
@@ -73,6 +95,16 @@ export function WritingCoachClient() {
       }
 
       setFeedback(data.feedback || "No feedback generated.");
+
+      if (typeof data.remainingToday === "number") {
+        setSuccessMessage(
+          `AI feedback generated. You have ${data.remainingToday} request${
+            data.remainingToday === 1 ? "" : "s"
+          } left today.`
+        );
+      } else {
+        setSuccessMessage("AI feedback generated.");
+      }
     } catch {
       setErrorMessage("Something went wrong while requesting AI feedback.");
     } finally {
@@ -82,10 +114,12 @@ export function WritingCoachClient() {
 
   function useSample(index: number) {
     const sample = sampleQuestions[index];
+
     setTaskType(sample.type);
     setQuestion(sample.question);
     setFeedback("");
     setErrorMessage("");
+    setSuccessMessage("");
   }
 
   return (
@@ -98,10 +132,15 @@ export function WritingCoachClient() {
 
           <div>
             <h1 className="text-3xl font-black">AI Writing Coach</h1>
+
             <p className="mt-2 max-w-2xl text-slate-600">
               Write an IELTS answer and get short feedback on weakness,
               structure, grammar, and improvement. This is practice feedback,
               not an official IELTS score.
+            </p>
+
+            <p className="mt-3 text-sm font-semibold text-slate-500">
+              Login is required. Daily AI limit: 5 feedback requests.
             </p>
           </div>
         </div>
@@ -114,6 +153,7 @@ export function WritingCoachClient() {
         >
           <div>
             <label className="text-sm font-bold">Task Type</label>
+
             <select
               value={taskType}
               onChange={(event) => setTaskType(event.target.value)}
@@ -126,6 +166,7 @@ export function WritingCoachClient() {
 
           <div>
             <label className="text-sm font-bold">Question</label>
+
             <textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
@@ -137,6 +178,7 @@ export function WritingCoachClient() {
           <div>
             <div className="flex items-center justify-between">
               <label className="text-sm font-bold">Your Answer</label>
+
               <span className="text-sm font-semibold text-slate-500">
                 {wordCount} words
               </span>
@@ -154,6 +196,12 @@ export function WritingCoachClient() {
           {errorMessage ? (
             <div className="rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
               {errorMessage}
+            </div>
+          ) : null}
+
+          {successMessage ? (
+            <div className="rounded-2xl bg-green-50 p-4 text-sm font-semibold text-green-700">
+              {successMessage}
             </div>
           ) : null}
 
@@ -182,6 +230,7 @@ export function WritingCoachClient() {
                   <span className="block text-xs uppercase tracking-wider text-slate-400">
                     {sample.type}
                   </span>
+
                   <span className="mt-1 block">{sample.question}</span>
                 </button>
               ))}
@@ -190,7 +239,9 @@ export function WritingCoachClient() {
 
           <div className="rounded-3xl border bg-white p-6 shadow-sm">
             <FileText />
+
             <h2 className="mt-3 text-xl font-black">Minimum Target</h2>
+
             <p className="mt-2 text-sm text-slate-600">
               Task 1 usually needs at least 150 words. Task 2 usually needs at
               least 250 words. For testing the app, 50+ words is enough.
